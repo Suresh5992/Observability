@@ -1,0 +1,94 @@
+custom_kube_prometheus_stack.yml
+
+
+ alertmanager:
+  alertmanagerSpec:
+    alertmanagerConfigSelector:
+      matchLabels:
+        release: monitoring
+    replicas: 2
+    alertmanagerConfigMatcherStrategy:
+      type: None
+
+prometheus-node-exporter:
+  service:
+    hostPort: false  # Disable hostPort
+    port: 1999       # Custom port
+  hostPort: false
+  hostNetwork: false
+  extraArgs:
+    - --web.listen-address=:1999  # Custom listen port
+  serviceMonitor:
+    relabelings: []
+  tolerations: []
+
+
+
+✅ Key points:
+
+hostPort: false — explicitly disables hostPort
+
+hostNetwork: false — ensures it's not using the host network
+
+extraArgs — resets the listen address
+
+tolerations: [] — ensures no forced node scheduling
+
+serviceMonitor — empty relabelings to prevent unintended scraping configs
+
+
+helm upgrade monitoring prometheus-community/kube-prometheus-stack -n monitoring -f ./custom_kube_prometheus_stack.yml
+
+
+kubectl get pods -n monitoring
+kubectl describe pod  -n monitoring
+
+
+PS C:\Users\USER\observability-zero-to-hero\day-2> minikube ssh
+docker@minikube:~$ sudo ss -tulnp | grep 9100
+tcp   LISTEN 0      4096               *:9100             *:*    users:(("node_exporter",pid=2754,fd=3))
+
+
+minikube ssh
+sudo ss -tulnp | grep 9100
+tcp LISTEN 0 4096 *:9100 *:* users:(("node_exporter",pid=2754,fd=3))
+
+sudo kill -9 2754
+
+if again shows Disable addons 
+
+minikube addons list
+
+minikube addons disable metrics-server
+
+minikube stop
+minikube start
+
+
+✅ After Restart:
+minikube ssh
+sudo ss -tulnp | grep 9100
+
+
+
+PS C:\Users\USER\observability-zero-to-hero\day-2> minikube ssh
+docker@minikube:~$ ps -ef | grep node_exporter
+nobody      3192    3042  0 14:25 ?        00:00:00 /bin/node_exporter --path.procfs=/host/proc --path.sysfs=/host/sys --path.rootfs=/host/root --path.udev.data=/host/root/run/udev/data --web.listen-address=[0.0.0.0]:9100
+docker      7038    7018  0 14:29 pts/1    00:00:00 grep --color=auto node_exporter
+
+Perfect, now you have confirmed that there is a node_exporter process running independently on port 9100 inside your Minikube VM:
+
+Prometheus UI:
+kubectl port-forward service/prometheus-operated -n monitoring 9090:9090
+
+
+Grafana UI: password is prom-operator
+kubectl port-forward service/monitoring-grafana -n monitoring 8080:80
+
+Alertmanager UI:
+kubectl port-forward service/alertmanager-operated -n monitoring 9093:9093
+
+
+
+kubectl get svc -n logging
+minikube service kibana-kibana -n logging

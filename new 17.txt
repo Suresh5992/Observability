@@ -1,0 +1,1368 @@
+observability 
+
+Metrics : data understand Health of System 
+* Raw Data 
+normallly --> raw data push to grafana to Viualization 
+Metrics --> Monitoring + Alerts + Dashboard 
+
+node Exportor :  collect (pull )  the data from node Exportor (Metrics) raw Data  | push to promotheus 
+
+promotheus store the data in TSDB --> Time Series Data Base 
+
+TSDB: 
+    |Time --> key      | values 
+   10.0006-->Heatbeart | 71
+Note : for the paticualr time stamp what is status of the Metrics (event data) 
+
+
+Q) if you want to get information from TSDB for last 20 to 30 min ?
+ANS) you can write [promQl] --> promotheus Query Langange  --> when you pass this promQl [ HTTPServer] --> using user Interface 
+promotheus give's the data base --> by [HTTPServer] 
+
+Q)normally promotheus pull the data from node Exportor what if only specific metric data send by Application ?
+ANS) In Kubernetes---> we are running 100 Application -> how to tell read Metics only from 50 Application 
+for that there is concept of Service Discovery --> you can coordiate with service Discovery pull promotheus this 50  Application  only target . 
+
+Archiecture Diagram :
+
+PULL Meachinsam :  
+Retrievl pull data from Exportor's (incomplate) 
+
+we are doing in Minikube 
+
+Docker hub --> open 
+
+Power shell --> minikube start
+
+kubectl get nodes
+
+note : clone the code (observability code ) 
+
+cd day 2 :
+kubectl create namespace monitoring
+
+
+helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring -f ./custom_kube_prometheus_stack.yml
+
+This installed the Prometheus, Grafana, Alertmanager, and exporters into the monitoring namespace on your Minikube cluster.
+
+✔️ Helm Output:
+
+Helm release name: monitoring
+
+Namespace: monitoring
+
+Status: deployed (means it worked successfully)
+
+kubectl get pods -n monitoring ( check out) 
+
+issue :  monitoring-prometheus-node-exporter-vk7zz    0/1   Pending   0   4m50s
+
+🚨 Issue: Node Exporter is in Pending State
+This usually happens when Minikube does not have enough resources (CPU/RAM) to schedule the pod.
+
+0/1 nodes are available: 1 node(s) didn't have free ports for the requested pod ports.
+👉 Minikube does not have an available host port 9100 (the default Node Exporter port).
+Another process is already using port 9100 on your Minikube node.
+
+****Since the Node Exporter is a DaemonSet that tries to bind to host port 9100, it cannot start if that port is already occupied. **** 
+
+Windows shell not support vim or vim use
+1. notepad .\custom_kube_prometheus_stack.yml (notepad )
+2. code .\custom_kube_prometheus_stack.yml (vs code ) 
+
+helm upgrade monitoring prometheus-community/kube-prometheus-stack -n monitoring -f ./custom_kube_prometheus_stack.yml
+
+kubectl get pods -n monitoring
+
+
+
+kubectl get daemonset monitoring-prometheus-node-exporter -n monitoring -o yaml | findstr hostPort
+
+we have been update new yaml for day2 : custom_kube_prometheus_stack.yml 
+
+issue : CrashLoopBackOff
+
+monitoring-prometheus-node-exporter-c8tpb                0/1     CrashLoopBackOff   3 (20s ago)   93s
+
+kubectl logs monitoring-prometheus-node-exporter-c8tpb -n monitoring
+
+explaination : 
+listen tcp :9100: bind: address already in use
+This means port 9100 is already occupied on your Minikube node.
+Since you are using hostPort: 9100, the Node Exporter is trying to bind the same port on the host machine for every pod.
+
+In Minikube, this is a common issue because all pods run on a single node and you can't bind the same hostPort multiple times on the same host.
+
+
+kubectl get pods -n monitoring 
+kubectl delete ns monitoring
+
+
+
+helm install  monitoring prometheus-community/kube-prometheus-stack -n monitoring -f ./custom_kube_prometheus_stack.yml
+
+
+kubectl get all -n monitoring    ALL Running 
+
+kubectl get pods  -n monitoring  Pods Running 
+
+kubectl port-forward service/monitoring-grafana -n monitoring 8080:80
+
+Grafana
+Connection --> Add new connection --> Prometheus add url for this and check out 
+
+New Exporter to monitor Kubernetes-: 
+**** kube-state-metrics 
+
+****it will get all the information  from Kubernetes  ApI Server  
+
+status we will get :
+
+Pod status 
+Deployment Status
+how many times pod is crashed 
+any kubernetes events invloved 
+config map 
+Secrets 
+
+this all infomation is matrics 
+
+
+Q) How promotheus can collect the application health check 
+Ans) Developer will return code ex:  ./status 
+along with that by using Service Discovery we will filter out Application to monitor 
+
+
+compititor for promotheus 
+1. Nagious 
+2.influxDB
+3.Graphite 
+
+ 
+ promotheus (has strong support ) 
+ 
+ 
+ 
+ 
+ day -3 
+ 
+🚀   Why We Enable Persistence (PV/PVC) for Prometheus and Grafana Only
+
+| Component               | Data Type                   | Persistence Needed? | Why?                                                                                                                                                                                          |
+| ----------------------- | --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Prometheus**          | Metrics (time-series data)  | ✅ Yes               | Prometheus **stores historical metrics** that you want to retain across pod restarts and cluster reboots.                                                                                     |
+| **Grafana**             | Dashboards, user settings   | ✅ Yes               | Grafana stores dashboards, users, and preferences which you **don’t want to lose after a restart.**                                                                                           |
+| **Alertmanager**        | Alerts, silences            | ❌ Optional          | Alertmanager can reload configuration, but typically **alerts and silences are transient.** Silences are sometimes persisted in more advanced setups, but it's not critical for basic setups. |
+| **Kube State Metrics**  | Real-time Kubernetes data   | ❌ No                | This component only **exposes live Kubernetes resource metrics.** It doesn’t store anything; it collects from the current cluster state.                                                      |
+| **Node Exporter**       | Real-time node metrics      | ❌ No                | Node exporter only **exposes current metrics from the node.** No data is stored inside the pod.                                                                                               |
+| **Prometheus Operator** | Kubernetes resource manager | ❌ No                | It just manages Prometheus, no data is stored in the pod.                                                                                                                                     |
+| **Service Monitors**    | Scrape target configs       | ❌ No                | They are custom resources, and their configuration is already stored in Kubernetes etcd.                                                                                                      |
+
+
+🚨 Issue: Grafana pvc issue : 
+
+NAME                                                                                                             STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0   Bound    pvc-c45b53a5-dff9-43bd-bd01-e194517c74cb   2Gi        RWO            standard       <unset>                 17m
+alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-1   Bound    pvc-f02dd654-5dd7-4e28-974b-2d499538f1e2   2Gi        RWO            standard       <unset>                 17m
+monitoring-grafana                                                                                               Bound    pvc-3add4d34-30eb-4303-bb5b-c468ff724d17   5Gi        RWO            standard       <unset>                 29s
+prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0           Bound    pvc-08233e3b-583e-45ae-a28b-49cea0dc6cb9   5Gi        RWO            standard       <unset>                 17m
+PS C:\Users\USER\observability-zero-to-hero\day-2> kubectl get pods -n monitoring
+NAME                                                     READY   STATUS                  RESTARTS      AGE
+monitoring-grafana-5d45cb885b-zc46w                      0/3     Init:CrashLoopBackOff   4 (33s ago)   2m18s
+
+
+we have been added pvc ro grafana even pod is going  CrashLoopBackOff
+
+Events:
+  Type     Reason     Age                   From               Message
+  ----     ------     ----                  ----               -------
+  Normal   Scheduled  3m34s                 default-scheduler  Successfully assigned monitoring/monitoring-grafana-5d45cb885b-zc46w to minikube
+  Normal   Pulled     110s (x5 over 3m28s)  kubelet            Container image "docker.io/library/busybox:1.31.1" already present on machine
+  Normal   Created    110s (x5 over 3m28s)  kubelet            Created container init-chown-data
+  Normal   Started    109s (x5 over 3m27s)  kubelet            Started container init-chown-data
+  Warning  BackOff    96s (x10 over 3m23s)  kubelet            Back-off restarting failed container init-chown-data in pod monitoring-grafana-5d45cb885b-zc46w_monitoring(682e0f07-4088-4b23-a39d-28aeb8664b35)
+  
+  The root cause is very clear from this line in the init-chown-data container:
+
+Command:
+  chown
+  -R
+  472:472
+  /var/lib/grafana
+State: Waiting
+Reason: CrashLoopBackOff
+Last State: Terminated
+Exit Code: 1
+
+
+
+🚩 Why is this Happening?
+Minikube’s default hostPath based storage often does not allow changing file permissions (chown) inside a mounted volume.
+
+When persistence is enabled:
+
+Grafana’s init container tries to run:
+chown -R 472:472 /var/lib/grafana
+
+Minikube storage backend does not support this operation → init container fails → Pod never starts.
+
+Here’s your complete final YAML file with all the necessary persistence settings, securityContext, and the initChownData fix included for Minikube:
+
+alertmanager:
+  alertmanagerSpec:
+    alertmanagerConfigSelector:
+      matchLabels:
+        release: monitoring
+    replicas: 2
+    alertmanagerConfigMatcherStrategy:
+      type: None
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi  # Persistent volume for Alertmanager
+
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi  # Persistent volume for Prometheus
+
+grafana:
+  persistence:
+    enabled: true
+    storageClassName: "standard"  # Use the correct storage class for Minikube, usually "standard"
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi  # You can increase to 20Gi if needed
+    finalizers:
+      - kubernetes.io/pvc-protection
+
+  securityContext:
+    runAsUser: 472
+    runAsGroup: 472
+    fsGroup: 472
+
+  initChownData:
+    enabled: false
+
+
+
+helm upgrade monitoring prometheus-community/kube-prometheus-stack -n monitoring -f ./custom_kube_prometheus_stack.yml
+
+
+kubectl get pods -n monitoring
+
+
+
+
+
+
+📌 Explanation:
+✅ You must have only one grafana key.
+
+✅ securityContext is correctly nested inside grafana.
+
+✅ I’ve added initChownData: enabled: false to fully avoid the chown issue in Minikube
+
+
+ 🚀 Summary:
+ 
+ | Action  | Description                                   |
+| ------- | --------------------------------------------- |
+| Problem | Minikube storage doesn’t allow `chown` in PVC |
+| Fix 1   | Add `securityContext` for Grafana             |
+| Fix 2   | Disable `initChownData`                       |
+| Fix 3   | Skip persistence temporarily                  |
+
+
+
+after Minikube shutdown 
+
+minikube start
+kubectl get pods -n monitoring
+
+
+you must do this  ( we will find the solution) 
+kubectl port-forward service/monitoring-grafana -n monitoring 8080:80
+
+📦 What Persistence Ensures:
+
+| Component    | Persistence Configured | Data Safe After Restart |
+| ------------ | ---------------------- | ----------------------- |
+| Grafana      | ✅ Yes                  | ✅ Yes                   |
+| Prometheus   | ✅ Yes                  | ✅ Yes                   |
+| Alertmanager | ✅ Yes                  | ✅ Yes                   |
+
+kubectl get storageclass
+
+
+
+✅ Possible Reasons & Solutions:
+
+. PVC Not Bound
+Sometimes, PVCs might not bind correctly if the storage is not automatically provisioned.
+👉 Run:
+
+kubectl get pvc -n monitoring
+👉 If status is Pending, the volume is not provisioned.
+
+If it's Pending, Minikube’s hostPath provisioner should have created the PV. If it didn’t:
+
+You may need to create a manual PersistentVolume (PV) to bind it.
+
+___
+
+This is actually expected behavior when using the kube-prometheus-stack with multiple replicas of Alertmanager and when persistent storage is enabled.
+
+Let me explain step-by-step:
+📌 Why are these PVC names showing like this?
+PVC Name Breakdown:
+Example:
+alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0
+
+It means:
+
+alertmanager-monitoring-kube-prometheus-alertmanager-db: This is the prefix added by the Helm chart for Alertmanager’s data storage.
+
+alertmanager-monitoring-kube-prometheus-alertmanager-0: This is the name of the specific Alertmanager pod (you have 2 replicas, so -0 and -1).
+
+
+✅ Why You See Two PVCs for Alertmanager:
+You configured 2 replicas of Alertmanager in your YAML:
+
+
+➜ Kubernetes creates a separate volume for each pod in a StatefulSet.
+
+➜ So you get:
+
+PVC for pod alertmanager-monitoring-kube-prometheus-alertmanager-0
+
+PVC for pod alertmanager-monitoring-kube-prometheus-alertmanager-1
+
+This is completely normal and correct for StatefulSets with persistent storage.
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 2
+	
+
+✅ Why this is Good:
+This ensures:
+
+If a pod restarts, its data is not lost.
+
+Each pod has dedicated storage.
+
+After minikube stop and minikube start, the data will persist.
+	
+	
+Quick Recap of What You Have:
+
+| Component      | PVC Status |
+| -------------- | ---------- |
+| Prometheus     | Bound      |
+| Grafana        | Bound      |
+| Alertmanager-0 | Bound      |
+| Alertmanager-1 | Bound      |
+
+
+📋 Final Checklist:
+ PVCs should show as Bound
+
+ Pods should not be stuck in Init:CrashLoopBackOff
+
+ Logs should not show volume errors
+
+ Port-forward again to check Grafana UI
+ 
+ 
+ DAY 3 - PART 2 
+ 
+ we will play with Prometheus and grafana 
+ Lof of metics and logs 
+ step1: 
+ 
+ in application node Exporter  run as a pod to collect the metrics 
+ node-exporter --> promotheus | cpu , memory ,ram  (infra part )
+ 
+ step 2: 
+ prometheus pull the infromation --> kube-state-metrics(exporter) run on kubernetes cluster as a pod its talk to API Sever to colect the mertics 
+Pod status 
+Deployment Status
+how many times pod is crashed 
+any kubernetes events invloved 
+config map 
+Secrets 
+validate weebhook 
+
+step 3: 
+custom metrics --> prometheus pull the mertics (it is related to Application) 
+ex: time taken to process HTTP Request 
+ex: number of user's crested   Account over 1 day , 1 week ( we will see ) we need to work with Developers 
+
+step 4: 
+prometheus collect  the all mertics from (node-exporter ,  kube-state-metrics , custom metric ) store in TSDB (time series data base ) 
+
+Time series data base --> at pericular time what are the mertics -- it is store in Periodic basic 
+
+TSDB -- Metrics ->  KEY | VALUE 
+
+step 5 :
+
+  prometheus serevr --> hitting the thrshold values , percentage then Alertmanager will hit  send mail 
+  
+we will commicate with prometheus with promql (prometheus Query lanagange) how http reruest is going and comming , hitting 
+
+same as for DB(Database has (sql ) we will commicate with prometheus 
+
+
+step 6:
+
+you must have in kubernetes --> node exporter and kube-state-metrics install agent on kubernetes
+
+
+kubectl get  pods -n monitoring 
+
+***
+1.  2 pods for node exporter 
+2.  only   1 for kube-prometheus-stack   why ?
+
+Ans) Node exporter run's as DaemonSet --> It has to collect information from each and evey node indivally so node exporter runs as DaemonSet   
+kube-state-metrics tal to API Server 
+
+
+monitoring-prometheus-node-exporter       ClusterIP   10.97.254.130    <none>        9100/TCP                     84m
+
+kubectl get svc -n monitoring
+note : you can't acess on broswer and out side of cluster  
+
+we are running on minikube 
+Checking the mertics :
+minikube ssh login
+
+curl  10.97.254.130:9100/metics  --> node exporter collecting inforamtion periodically 
+
+cpu, memory , 
+
+
+monitoring-kube-state-metrics --infomation
+
+curl 10.100.250.145:8080/metrics
+complate informtion of kubernetes in system 
+Pod status 
+Deployment Status
+how many times pod is crashed 
+any kubernetes events invloved 
+config map 
+Secrets 
+validate weebhook 
+
+curl 10.100.250.145:8080/metrics | grep container | grep restart 
+
+
+
+prometheus collected lot of inforamtion let check and play it 
+
+
+we install pod contineous crashed --> let check it 
+
+kubectl run busybox-crash --image=busybox -- /bin/sh -c "exit 1" 
+
+ kubectl run busybox-crash --> always crash's it will go to crash loop back off "exit 1"  --> means keep crashing we ill see on prometheus run this pod 
+ 
+ kubectl get pods 
+ 
+  kube_pod_container_status_restarts_total{namespace="default"} --> check in prometheus and Execute it 
+  
+this is for busy box pods 
+  kube_pod_container_status_restarts_total{}
+  
+ ex: 
+ 
+kube_pod_container_status_restarts_total{container="alertmanager", endpoint="http", instance="10.244.0.103:8080", job="kube-state-metrics", namespace="monitoring", pod="alertmanager-monitoring-kube-prometheus-alertmanager-0", service="monitoring-kube-state-metrics", uid="3ae368f9-2719-49f9-bccd-c47a07786b19"}
+
+kube_pod_container_status_restarts_total{container="busybox-crash", endpoint="http", instance="10.244.0.103:8080", job="kube-state-metrics", namespace="default", pod="busybox-crash", service="monitoring-kube-state-metrics", uid="92c40133-b629-4359-92f4-3c91c4bfd75f"}
+ 
+kube_pod_container_status_restarts_total{container="config-reloader", endpoint="http", instance="10.244.0.103:8080", job="kube-state-metrics", namespace="monitoring", pod="alertmanager-monitoring-kube-prometheus-alertmanager-0", service="monitoring-kube-state-metrics", uid="3ae368f9-2719-49f9-bccd-c47a07786b19"}
+
+kube_pod_container_status_restarts_total{container="coredns", endpoint="http", instance="10.244.0.103:8080", job="kube-state-metrics", namespace="kube-system", pod="coredns-7db6d8ff4d-d92pr", service="monitoring-kube-state-metrics", uid="8ba94c9c-fa91-471a-85f3-012e57ca8f08"}
+
+
+like this you can many {} when you select empty in Brackets 
+ 
+
+
+   kube_pod_container_status_restarts_total{namespace="default"}
+   
+what did thid does ?
+ans)when  we  create and run the  pod --> kube-API-Server recicve the server --> it will talk to scheduler --> i will talk to kublet (for knowlege) 
+
+from the kube-API-Server --> contineous pull metics --> kube-state-metrics | we have seen total restarts ( how many times) /metrics prometheus understands 
+
+***pod -->kube-API-Server-->kube-state-metrics(restart we observed) --> ./merics restart process (prometheus will understand ) --> prometheus -->
+--> we checked kube_pod_container_status_restarts_total{namespace="default"}-->promql( you got information) ***
+
+
+we can see graph in prometheus server --> then why we need grafana --> because we can seperate the pod crashs , keep sucess and faliure in grafana 
+
+grafana --> we can Auhticate and Authorixzation (IAM , only certain can view , Read only Acess provided to Teams ) 
+
+
+what are the setup is already set by grafana for better Dashboards
+
+grafana --> connections--> datascouce (check out ) 
+
+
+
+_____________________________________________________________________________________________________________________________________________
+
+DAY -4 
+ 
+Custom Metrics ( how we need to right ) 
+
+instrumentation 
+
+Jaeger (dynamic Tracing) 
+
+ex: developer not done any ( logging , traces, metrics in application) this is called instrumentation
+
+Q)we can use exporter for that ?
+ans ) exporter can't get very specific to Application
+ex: how many users login in last 30 days (or ) how many of them created  Account (or ) http Duraction for particaular services 
+exportor : gives particular information like cpu, memory , Disk  
+
+
+merics ( we have diff types of merics even one of them have diff functionally )
+ex: data types in python has (int , float , boolean, ..... like that ) 
+
+
+you need to understand  what is responsiblity of this indivally matrics 
+Metrics Types : 
+1.counter 
+2.Gauge 
+3.histogram 
+4.summary 
+
+1.counter 
+count of metics always going High increase (login ) --> last 30days  --> counter merics 
+HTTP request also increase daily --> last 26 days --> counter mertics
+
+2.Gauge 
+this metics can be increment and Decrement 
+ex: 📈 and 📉
+ex: configmaps , cpu , memory ultization 
+
+
+3.histogram 
+how many times cpu ultization went below 50% (or) above 50%
+
+ex: http request Duration    ( how many times http request takes < 5 ms (or ) how many times http request takes more than >100 ms )
+
+
+🪣 -- 5 ms | 🪣 -- 10 ms  | 🪣 -- 100 ms | 🪣 -- 1 m 
+
+At 11 am we got http request if it is taking 5 ms we will put in 1 bucket 
+
+at 3 apm am we got http request if it is taking 5 ms we will put in 1 bucket 
+
+through we can trace Duraction and latency 
+
+4.summary  (incomplate ) 
+
+
+github--> day 4 --> service a --> index.js (creating simple Api to talk with service b ) 
+index.js --> node js Application ( here you can see how metics has been instrumentated
+
+// Prometheus metrics
+const httpRequestCounter = new promClient.Counter({  ( using promClient we are defining the counter metic type is counter  
+    name: 'http_requests_total',
+    help: 'Total number of HTTP requests',
+    labelNames: ['method', 'path', 'status_code'],
+});
+
+( using promClient we are defining the counter metic type is counter  
+what is the name of the metric type : counter 
+name of metic : 'http_requests_total' ( note : http request never go down as count iam telling ) 
+to help in query  ( labelNames: ['method', 'path', 'status_code']
+
+
+HTTP Request in Duration seconds 
+const requestDurationHistogram = new promClient.Histogram({
+    name: 'http_request_duration_seconds',
+    help: 'Duration of HTTP requests in seconds',
+    labelNames: ['method', 'path', 'status_code'],
+    buckets: [0.1, 0.5, 1, 5, 10], // Buckets for the histogram in seconds
+});
+
+it has to be done in buckets 
+🪣 -- 5 ms | 🪣 -- 10 ms  | 🪣 -- 100 ms | 🪣 -- 1 m 
+
+At 11 am we got http request if it is taking 5 ms we will put in 1 bucket 
+metric: called Histogram
+buckets: [0.1, 0.5, 1, 5, 10]  -->  diff types of buckets are created for ( http request Duration) 
+
+
+github --> day 4 --> readme 
+
+kubectl create ns dev
+
+kubectl apply -k kubernetes-manifest/
+
+PS C:\Users\USER\observability-zero-to-hero\day-4> kubectl apply -k kubernetes-manifest/
+service/a-service created
+service/b-service created
+deployment.apps/service-a-deployment created
+deployment.apps/service-b-deployment created
+
+( deployment and service also created) 
+
+let's check pods are running 
+kubectl get pods -n dev   
+
+Node.js application ( service a talk to service b  will be internally ) 
+
+kubectl get svc -n dev  
+
+minikube service a-service -n dev ( it will open ) 
+
+
+we have return the custom metrics 
+http_requests_total (let check in pro server) -- not working  why ? ?
+we have been return custom mertics metics , even promotheus not returing ??
+ans) because service Discovery  --> in kubernetes multiple application can run how promotheus know why application merics need t collect 
+
+if it is node exporter (it will know that automatically ) 
+
+note : how to check promotheus is writing logs ip:port/merics ( write and check it ) 
+
+
+kubectl apply -k alerts-alertmanager-servicemonitor-manifest/   -- run this 
+
+servicemonitor.yaml -->
+
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: a-service-service-monitor
+    release: monitoring
+  name: a-service-service-monitor
+  namespace: monitoring
+spec:
+  jobLabel: job
+  endpoints:
+    - interval: 2s
+      port: a-service-port
+      path: /metrics
+  selector:
+    matchLabels:
+      app: a-service
+  namespaceSelector:
+    matchNames:
+      - dev
+
+in the dev namespace 
+ namespaceSelector:
+    matchNames:
+      - dev
+
+ match the service called service a 
+ labels:
+    app: a-service-service-monitor
+    release: monitoring
+  name: a-service-service-monitor
+  namespace: monitoring
+spec:
+  jobLabel: job
+  endpoints:
+    - interval: 2s
+      port: a-service-port
+      path: /metrics
+  selector:
+  
+ get the metrics at ./merics( end point ) 
+port: a-service-port
+      path: /metrics
+	  
+this script read by promotheus fetch the metics of application provided on /merics at end point 
+
+kubectl apply -k alerts-alertmanager-servicemonitor-manifest/
+
+now check the promotheus server -- > http_requests_total  ( one you have created custom metic instrumentated and  created service Discovery )
+
+
+if you want create custom Metrics 
+1. instrumentated
+2.set up complate promotheus 
+3. service Discovery
+
+
+we need to Alter manger  
+
+day-4/alerts-alertmanager-servicemonitor-manifest/alertmangerconfig.yml
+
+matchers:
+      - name: alertname
+        value: HighCpuUsage
+      receiver: 'send-email'
+    - matchers:
+      - name: alertname
+        value: PodRestart
+      receiver: 'send-email'
+      repeatInterval: 5m
+High memory and pod Restart we will check now 
+
+
+open gmail first enable 2 factor Auhticate step add mobile number 
+then security --> App passwords (search)
+gmail  :  sknum84@gmail.com
+username : alertmanger-observablikity
+passwd : lprv ogvr fqhw ljuu
+
+
+convert passwd into base 64 
+
+echo "lprv ogvr fqhw ljuu" | base64
+
+for powershell 
+
+[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("lprv ogvr fqhw ljuu"))
+
+passwd : bHBydiBvZ3ZyIGZxaHcgbGp1dQ==
+
+notepad .\email-secrets.yml (open ) 
+
+
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: main-rules-alert-config
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  route:
+    repeatInterval: 30m
+    receiver: 'null'
+    routes:
+      - matchers:
+          - name: alertname
+            value: HighCpuUsage
+        receiver: 'send-email'
+      - matchers:
+          - name: alertname
+            value: PodRestart
+        receiver: 'send-email'
+        repeatInterval: 5m
+  receivers:
+    - name: 'send-email'
+      emailConfigs:
+        - to: sknum84@gmail.com
+          from: sknum84@gmail.com
+          sendResolved: false
+          smarthost: smtp.gmail.com:587
+          authUsername: sknum84@gmail.com
+          authIdentity: sknum84@gmail.com
+          authPassword:
+            name: mail-pass
+            key: gmail-pass
+    - name: 'null'
+
+kubectl apply -k . 
+
+output :
+
+PS C:\Users\USER\observability-zero-to-hero\day-4\alerts-alertmanager-servicemonitor-manifest> kubectl apply -k .
+secret/mail-pass created
+prometheusrule.monitoring.coreos.com/custom-alert-rules unchanged
+servicemonitor.monitoring.coreos.com/a-service-service-monitor unchanged
+alertmanagerconfig.monitoring.coreos.com/main-rules-alert-config configured
+
+
+
+http://127.0.0.1:57055
+
+Basic Routes:
+Returns a "Running" status.
+healthy: Returns the health status of the server.
+serverError: Simulates a 500 Internal Server Error.
+notFound: Simulates a 404 Not Found error.
+logs: Generates logs using the custom logging function.
+crash: Simulates a server crash by exiting the process.
+example: Tracks async task duration with a gauge.
+metrics: Exposes Prometheus metrics endpoint.
+call-service-b: To call service b & receive data from service b
+
+we are crash the application and check alter manager is working or not 
+
+
+ kubectl get pods -n dev
+ output :
+ service-a-deployment-565d5c86d5-dwqn4   0/1     Error     1 (47s ago)   54m
+service-b-deployment-7b466747cf-rxxht   1/1     Running   0             54m
+
+
+
+_____________________________________________________________________________________________________________________________________________
+
+
+Day-5 | Logging with EFK Stack | Elastic Search, FluentBit and Kibana
+
+
+
+logging -- what is log for paticualr time stamp so , we can debug it 
+ex: in code we have 10,000 lines which line is break ( 2000 line is breaked why it breaked ) 
+
+EFK Stack 
+
+Q) mutiple 100 application run in kubernetes --  few application has database connection issues how we reslove ?
+ans)  note : we can't go each on pod check the db connection --> in the place we can create centralized system EFK (in which collect the logs with db error find with notepad 
+ try to reslove ) 
+
+issue name : log4j issue common we can see (knowlege) 
+
+EFK 
+Elastic search
+FluentBit
+Kibana
+
+
+1.hare we have 3 diff application deployed on kubernetes cluster  FluentBit ( work as DaemonSet -means (deployed in each node kubernetes cluster)
+2.this FluentBit from the pods runs on kubernetes cluster  forword the logs to Elastic search( it self database) we can attached to ebs volume ,snap shots , and take a backup of logs for paticular time 
+3. from Elastic search do both push and pull  --> to Kibana (grafana )
+4. ebs means persistence volume beacuse it may 10 gb -- take daily backup and store in Snapshots  
+5.FluentBit is log forward
+
+we do have Logstosh in place of FluentBit then why FluentBit only forwords the logs 
+
+Logstosh is Aggregrator (more options like filter the logs , advance filter, labels more actions....)
+
+FluentBit is light weight (just forword the logs )  
+
+_____________________________________________________________________________________________________________________________________________
+			Most Important 
+for AWS Cluster 
+1. create IAM Role service Account 
+
+C:\Users\USER\observability-zero-to-hero> cd .\day-5\
+
+1.we have FluentBit --> forword the logs to Elastic Search ( but we will use Elastic  Search use as statefull set we will mount it with EBS )
+2. We are using eks cluster or minikube Elastic Search in kubernetes cluter runs || EBS( vloumes) is out side the cluster ( both are in aws or minikube environmnet )
+3. how Elastic Search in Eks Cluster commicate with EBS (volume) ??
+ans) map the kubernetes  service account of Elastic Search with IAM Role 
+4.where IAM Role create EBS (vloumes)   || we are going to do for IAM Role ==> CSI EBS (driver's)  
+5.This CSI EBS (driver's) create storage class , persistence volume as it needed 
+
+
+
+
+if pod Related issue delete 
+
+kubectl delete ns logging --grace-period=0 --force
+kubectl create ns logging
+
+kubectl get ns
+
+
+
+
+for AWS 
+eksctl create iamserviceaccount \
+    --name ebs-csi-controller-sa \
+    --namespace kube-system \
+    --cluster observability1 \
+    --role-name AmazonEKS_EBS_CSI_DriverRole \
+    --role-only \
+    --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+    --approve
+	
+	
+✅ Step-by-Step Setup for Minikube (Without AWS Dependency)
+🛠️ 1) Enable CSI HostPath Driver (Local Storage)
+
+minikube addons enable volumesnapshots
+minikube addons enable csi-hostpath-driver
+👉 This replaces the AWS EBS CSI driver in Minikube. 
+
+🛠️ 2) Create Namespace for Logging
+kubectl create namespace logging
+
+
+🛠️ 3) Install Elasticsearch on Minikube
+helm repo add elastic https://helm.elastic.co
+helm repo update
+
+(it is not workin only single line works)
+helm install elasticsearch elastic/elasticsearch \
+ --set replicas=1 \
+ --set volumeClaimTemplate.storageClassName=standard \    
+ --set persistence.labels.enabled=true \
+ -n logging
+ 
+ powershell :
+ 
+ helm install elasticsearch elastic/elasticsearch --set replicas=1 --set volumeClaimTemplate.storageClassName=standard --set persistence.labels.enabled=true -n logging
+
+
+🗃️ Step 3: Use Persistent Storage for Kibana (Optional but Recommended)
+By default, Kibana doesn't persist data because it's just a frontend.
+But if you want to persist Kibana dashboard settings:
+(pvc locally added)
+helm install kibana elastic/kibana --set service.type=NodePort --set persistence.enabled=true --set persistence.storageClass=standard -n logging
+
+ 
+ Note :  in aws volumeClaimTemplate.storageClassName=gp2
+ 
+1. FluentBit when it forword log to Elastic Search  it will need Autication , we need to take username and passwd of Elastic Search
+2. when we deploy FluentBit  we will pass the user and passwd in configuartion 
+
+
+
+$encodedUsername = kubectl get secrets --namespace=logging elasticsearch-master-credentials -o jsonpath="{.data.username}"
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedUsername))
+
+username :  elastic
+
+$encodedPassword = kubectl get secrets --namespace=logging elasticsearch-master-credentials -o jsonpath="{.data.password}"
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedPassword))
+
+
+paswwd :  AHAxWGRS7gBu5zKG
+
+aws 
+helm install kibana --set service.type=LoadBalancer elastic/kibana -n logging
+
+in aws NodePort place LoadBalancer
+ helm install kibana elastic/kibana --set service.type=NodePort -n logging
+
+
+kubectl get svc -n logging
+cd day-5
+notepad .\fluentbit-values.yaml 
+
+HTTP _password  and 2 outputs it will be there change the passwd also there  
+
+
+helm repo add fluent https://fluent.github.io/helm-charts
+helm install fluent-bit fluent/fluent-bit -f fluentbit-values.yaml -n logging
+
+
+kubectl get pods -n logging
+
+PS C:\Users\USER\observability-zero-to-hero\day-5> kubectl get pods -n logging
+NAME                            READY   STATUS    RESTARTS   AGE
+elasticsearch-master-0          1/1     Running   0          14m
+fluent-bit-px54t                1/1     Running   0          92s
+kibana-kibana-555ddb75f-hfznf   1/1     Running   0          10m
+
+
+PS C:\Users\USER\observability-zero-to-hero\day-5> kubectl get svc -n logging
+NAME                            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)             AGE
+elasticsearch-master            ClusterIP   10.104.142.173   <none>        9200/TCP,9300/TCP   16m
+elasticsearch-master-headless   ClusterIP   None             <none>        9200/TCP,9300/TCP   16m
+fluent-bit                      ClusterIP   10.103.18.182    <none>        2020/TCP            3m16s
+kibana-kibana                   NodePort    10.96.31.240     <none>        5601:30241/TCP      12m
+ 
+
+this is working 
+ 
+minikube service kibana-kibana -n logging
+ 
+http://127.0.0.1:54999/app/home#/
+
+This is Kibana Dashboard --> this Autometally collect to Elasticsearch --> logstach forword the logs 
+
+Discover 
+
+you have data from Elastic search -- wewill deply the application lets see logs of the application can we see in Elasticsearch --> FluentBit forward the logs in Elasticsearch
+now can see this on Kibana or not let's check 
+
+
+github --> day 4  
+kubectl create ns dev 
+
+kubectl apply -k kubernetes-manifest/    (must go to day 4 )
+
+kubectl get pods -n dev 
+
+kubectl logs (podname)  -n dev 
+
+kubectl get pods -n logging     ( fluent-bit can understand  service a is crested it is abale to pull the logs service a or not ) 
+
+kubectl get pods -n logging
+
+kubectl logs fluent-bit(pod-name)  -n logging   (must check this )
+
+http://127.0.0.1:54999/app/discover#/
+
+
+click on my own ( if ask means )
+Create data view 
+
+Logs comming form Diff namespaces , Applications with the time stamp 
+
+how kibana getting this --> Elasticsearch
+How Elasticsearch getting this --> FluentBit
+
+Here you have Kibana Query Langange
+
+
+if you want to Migrate elasticsearch to Splank  --> FluentBit work as it is  
+
+
+
+There are 4 primary things for configuartion (FluentBit-values.yaml)--day-4 
+1.service  -- nodeport mode /cluster pod or any feature need to add 
+2.input -- where input comming from --> container logs ( path is given all logs like that ) 
+3.output  -- in output where the FluentBit forword the logs we are using Elastic search , username , passwd , port tls must on(for aws for connection) 
+4.Filters -->lua script is used (we can do Ignore namespace =logging )
+
+
+
+
+_____________________________________________________________________________________________________________________________________________
+
+Day-6 | Distributed Tracing with Jaeger in 1 video | Beginner Level Demo with Code
+
+
+Tracing 
+
+we learned 3 pillers of application [ metrics , logs , Traces ] 
+
+in real world Example
+
+              Login page<------->payment services 
+
+
+login page which has talk to payment services 
+
+		customer ---->Login page<------->payment services 
+when customer want to talk to payment services first(login--Auhticate , Authorize)
+		
+		 customer ---->Login page<-----A---------------B----->payment services 
+Your request went to login services (Auhticate , Authorize) then went to service A then service B after reach to Payment service
+
+but your request went to mutiple hubs (you don't know A and B services) 
+
+Mutiple services  --> networks, loadbalancers .....
+
+Normally service A-----B latency takes ( 1 microsec) | but know for some transaction it takes (4 microsec)  for that we need tracing 
+
+so you need Tracing from A---------------B | why it ( why transaction peroid is incease to 3 microsec) 
+
+tracing also checking (what are service are involved , || if there is implemented then we can check  
+
+
+how we need to implement Tracking 
+
+part 1
+1. developer do that 
+Instrumentation 
+ |- metrics
+ |-logs
+ |-traces (tracing means open Telementary ) 
+ 
+ in day-4 -->tracing.js file check out onces ( wehave Instrumentation application) 
+ 
+ 
+part 2
+As devops/SRE implement the Tracing
+devops/sre need to deploy tracing related tools | right know we are using in this project Jaeger(tracing Tool) for tracking another tools : datadog, Dynatrace 
+
+why Jaeger is Light weight  mostly in start ups easy 
+
+Q)How does Jaeger works ? 
+ans)we learned promotheus | Elastic search  | now Jaeger  ( all have mostly same Archiecture) 
+
+node exporter --> promotheus (pull) --> UI --> TSDB >  userUI --> Promql Query --> TSDB -->Prometheus--> -> UI (user)
+
+FluentBit work as Exporter(Elasticsearch) -- gets inforamtion from application (push ) forward to --> Elasticsearch --> we have Elastic DB --> 
+user UI ->Query --> Elasticsearch -- UI (user) 
+
+
+same with Jaeger as well 
+in Jaeger we have 4 component 
+1. Agent   --> get (Traces from the Application) (when 
+2. collecter ( collect the information  agent get information that collect ) 
+3. we can use own database ( elastic search DB --> by deafult it won't configure we need to Configure it  ) collected inforsmtion can be stored in elastic eaerch , 
+casandra DB ....  ( elastic search is fast we chosse that) 
+4. UI (user interface -->  we will fire a query to collecter (collect the infromation throught --> the Elasticsearch DB --> display to --> UI (user) 
+
+5. promotheus | Elastic search  |  Jaeger ( all are running on the cluster) 
+
+6. 3 diff ultilites collecting the inforamtion :
+1. Exporter of prometheus --> colect the metics inforamtion  -- running pods on cluster 
+2. FluentBit --( collecting yhe Logs)
+3. Jaeger --> Jaeger is Agent collecting the Traces from the Appliation 
+
+
+Jaeger store in data in Elasticsearch
+
+node exporter forword inforsmtion to --> promotheus (pull inforamtion ) 
+FluentBit forward inforsmtion to  --> Elasticsearch ( Jaeger store in data in Elasticsearch)
+
+user get 3 interface  share with team for monitoring
+1.grafana --> merics interface 
+2.Jaeger Query (Distubated Tracing )
+3. Kibana --> Log Interface 
+
+day-6 --> readmefile 
+
+you need to have Elasticsearch when you try to install Jaeger ( time of installation Jaeger - we will provide the Elasticsearch passwd , url ) 
+so Jaeger can talk to Elasticsearch colect the inforamtion 
+
+
+
+kubectl get pods -n logging 
+
+kubectl get nodes  (minikube is running ) 
+ 
+
+
+
+from day-5 / readme 
+AWS
+this Service is Requried to interact with EBS Vloume 
+eksctl create iamserviceaccount \
+    --name ebs-csi-controller-sa \
+    --namespace kube-system \
+    --cluster observability \
+    --role-name AmazonEKS_EBS_CSI_DriverRole \
+    --role-only \
+    --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+    --approve
+
+nOte : we are creating service Account Elasticsearch i tne Eks Cluster and EBS volume ( this outside of kubernetes cluster) 2 diff service ho they are Interact each other
+we need to intergate IAM with the service Account 
+
+Elasticsearch pod inside the EKS Cluster  --> EBS is out side of Eks cluter not in the cluster 
+we eill create service Account for Elasticsearch - bound with IAM Role bu using OIDC Conneter
+we will use IAM Roles for this 
+
+
+Minikube :
+day-5 and day-6 combine 
+ARN (Amazon Resource Name) of an IAM Role not needed to To Minikube 
+
+
+✅ Minikube Storage Equivalent to EBS
+In Minikube, use the HostPath CSI Driver (you already enabled it) ( without this not possible) 
+minikube addons enable volumesnapshots 
+minikube addons enable csi-hostpath-driver
+
+kubectl create namespace logging
+
+helm install elasticsearch elastic/elasticsearch --set volumeClaimTemplate.storageClassName=standard --set replicas=1 --set persistence.labels.enabled=true -n logging
+
+
+helm install kibana elastic/kibana --set service.type=NodePort --set persistence.enabled=true --set persistence.storageClass=standard -n logging
+
+
+$encodedUsername = kubectl get secrets --namespace=logging elasticsearch-master-credentials -o jsonpath="{.data.username}"
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedUsername))
+
+username :  elastic
+
+$encodedPassword = kubectl get secrets --namespace=logging elasticsearch-master-credentials -o jsonpath="{.data.password}"
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedPassword))
+
+
+paswwd :  AHAxWGRS7gBu5zKG
+
+day-6/ readme 
+
+Certification
+
+$caCertBase64 = kubectl get secret elasticsearch-master-certs -n logging -o jsonpath="{.data.ca\.crt}"
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($caCertBase64)) | Out-File -FilePath "ca-cert.pem" -Encoding utf8
+
+kubectl create ns tracing
+
+
+ Create ConfigMap where you can store the Elasticsearch CA Configuration 
+
+kubectl create configmap jaeger-tls --from-file=ca-cert.pem -n tracing
+
+Create Secret for Elasticsearch TLS
+kubectl create secret generic es-tls-secret --from-file=ca-cert.pem -n tracing
+
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+
+helm repo update
+
+
+notepad   .\jaeger-values.yaml
+
+helm install jaeger jaegertracing/jaeger -n tracing --values jaeger-values.yaml
+
+kubectl port-forward svc/jaeger-query 8080:80 -n tracing
+
+http://127.0.0.1:8080/ (shows Error )
+
+lets check the pods 
+
+kubectl get pods -n tracing
+
+PS C:\Users\USER\observability-zero-to-hero\day-6> kubectl get pods -n tracing
+NAME                                READY   STATUS             RESTARTS      AGE
+jaeger-agent-sv6q9                  1/1     Running            0             3m19s
+jaeger-collector-7b68c557f7-bmw5f   0/1     CrashLoopBackOff   4 (60s ago)   3m19s
+jaeger-query-5d875949bc-lg8rd       1/2     CrashLoopBackOff   4 (45s ago)   3m19s
+
+it is not Serving the User Interface 
+
+kubectl describe pod jaeger-query-5d875949bc-lg8rd -n tracing
+
+
+ Warning  BackOff    3m23s (x9 over 4m21s)  kubelet            Back-off restarting failed container jaeger-query in pod jaeger-query-5d875949bc-lg8rd_traci
+
+
+
+_____________________________________________________________________________________________________________________________________________
+
+if you face any errors run this 
+
+
+$base64Cert = kubectl get secret elasticsearch-master-certs -n logging -o jsonpath="{.data.ca\.crt}"
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($base64Cert)) | Out-File -Encoding ascii ca-cert.pem
+
+kubectl create ns tracing
+
+kubectl create configmap jaeger-tls --from-file=ca-cert.pem -n tracing -o yaml --dry-run=client | kubectl apply -f -
+
+kubectl create secret generic es-tls-secret --from-file=ca-cert.pem -n tracing -o yaml --dry-run=client | kubectl apply -f -
+
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+
+helm repo update
+
+helm install jaeger jaegertracing/jaeger -n tracing --values jaeger-values.yaml (Don't run ) 
+
+helm upgrade jaeger jaegertracing/jaeger -n tracing --values jaeger-values.yaml (run this ) 
+
+Kubectl get pods -n tracing 
+
+kubectl port-forward svc/jaeger-query 8080:80 -n tracing
+
+day-4 we have application (traces added ) 
+
+kubectl create ns dev
+
+kubectl apply -k kubernetes-manifest/   ( if you want you can change the images of Application) 
+
+kubectl get svc -n dev 
+
+You can directly access it using that URL.
+
+kubectl port-forward svc/b-service 8080:80 -n dev 
+
+Open a browser and get the LoadBalancer DNS name & hit the DNS name with following routes to test the application:
+/
+/healthy
+/serverError
+/notFound
+/logs
+/example
+/metrics
+/call-service-b
+
+
+
+
+Step 1: Ensure service-a and service-b are deployed and healthy
+kubectl get svc -n dev
+kubectl get deploy -n dev
+kubectl get pods -n dev
+
+PS C:\Users\USER> kubectl port-forward svc/jaeger-query 8080:80 -n tracing
+Unable to listen on port 8080: Listeners failed to create with the following errors: [unable to create listener: Error listen tcp4 127.0.0.1:8080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted. unable to create listener: Error listen tcp6 [::1]:8080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.]
+error: unable to listen on any of the requested ports: [{8080 16686}]
+PS C:\Users\USER> PS C:\Users\USER> kubectl port-forward svc/jaeger-query 8080:80 -n tracing
+
+This error means port 8080 is already in use on your local machine (probably you have another port-forward session or another service using it).
+
+kubectl port-forward svc/jaeger-query 8081:80 -n tracing   
+
+check port is free or not 
+
+ 2: Free the Port
+ 
+ netstat -ano | findstr :8080
+ 
+ Kill that process:    (knowlege ) 
+ 
+ TCP    127.0.0.1:8080       0.0.0.0:0              LISTENING       <PID>  (knowlege ) 
+
+taskkill /PID <PID> /F      (knowlege ) 
+
+
+http://127.0.0.1:61000/healthy
+
+Jaeger you can check how many mileseconds sucess
+spains  -- A to B 
+
+
+http://127.0.0.1:61000/call-service-b
+
+checking in Jaeger 
+
+service b 
+kubectl logs deployment/service-b-deployment -n dev
+kubectl describe deployment service-b-deployment -n dev
+kubectl edit svc b-service -n dev     |  targetPort: 3002
+kubectl port-forward deployment/service-b-deployment 8082:<correct-port> -n dev
+
+PS C:\Users\USER> kubectl logs deployment/service-b-deployment -n dev
+Tracing initialized
+Service A is running on port 3001
+
+Service A is running on port 3001   | Connection refused
+
+
+kubectl edit svc b-service -n dev   ||| targetPort: 3002 change to   targetPort: 3001
+
+kubectl port-forward deployment/service-b-deployment 8082:3001 -n dev
+
+kubectl port-forward deployment/service-b-deployment 8082:3001 -n dev
+
+
+http://127.0.0.1:8082
+
+
+kubectl describe deploy service-b-deployment -n dev
+
+service A to servie B  (After implaemting Tracing ) 
+this spam call Express init ( particualr function for initalization) and when i implement complate trancing service-a and service-b taking lot of time
+after implementing Tracing why it is taking more time why it is taking to much time i shared inforamtion with Developer 
+
+may be http routing taking the time 
+
+
+
+ 
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+

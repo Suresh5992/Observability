@@ -1,0 +1,86 @@
+Great question.
+
+When a pod is part of a ReplicaSet, Deployment, or DaemonSet, you cannot just delete the pod permanently because the controller (ReplicaSet, Deployment, DaemonSet) will immediately recreate it to maintain the desired state.
+
+If you want to permanently delete the pod, you must delete the controller (parent object) that is managing the pod.
+
+✅ Here's the step-by-step permanent deletion process:
+📌 If the pod is managed by a Deployment:
+Find the Deployment:
+
+bash
+Copy
+Edit
+kubectl get deployment -A | Select-String "node-exporter"
+Delete the Deployment:
+
+bash
+Copy
+Edit
+kubectl delete deployment <deployment-name> -n <namespace>
+📌 If the pod is managed by a DaemonSet (common for node-exporter):
+Find the DaemonSet:
+
+bash
+Copy
+Edit
+kubectl get daemonset -A | Select-String "node-exporter"
+Delete the DaemonSet:
+
+bash
+Copy
+Edit
+kubectl delete daemonset <daemonset-name> -n <namespace>
+📌 If the pod is managed by a StatefulSet:
+Find the StatefulSet:
+
+bash
+Copy
+Edit
+kubectl get statefulset -A | Select-String "node-exporter"
+Delete the StatefulSet:
+
+bash
+Copy
+Edit
+kubectl delete statefulset <statefulset-name> -n <namespace>
+📌 Finally:
+Check again:
+
+bash
+Copy
+Edit
+kubectl get all --all-namespaces -o wide | Select-String "node-exporter"
+kubectl get all --all-namespaces -o wide | Select-String "9100"
+If everything is gone, you can confirm no resource is recreating the pod anymore.
+
+⚙️ Why?
+Because:
+
+Pods are temporary and automatically recreated if they are controlled.
+
+Deployments, DaemonSets, and StatefulSets manage pod life cycles. To stop the pod from coming back, you must delete the controller.
+
+If you share the output of:
+
+bash
+Copy
+Edit
+kubectl get daemonset -A
+kubectl get deployment -A
+
+
+notepad .\default-values.yaml
+
+
+checking namespace 
+kubectl get ns
+
+creating namespace 
+kubectl create ns logging
+
+
+ Verify the PVC for Kibana
+ kubectl get pvc -n logging
+ 
+ 
